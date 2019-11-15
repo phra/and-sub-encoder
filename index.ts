@@ -49,7 +49,7 @@ function getZeroAndEax2(allowedChars: string, length = 4): [number, number] {
     return [c, d]
 }
 
-function getSingleSubEncode(value: number, previousRemainder = 0, allowedChars: string): [number, number, number, number] {
+function getSingleSubEncode(value: number, previousRemainder: number, allowedChars: string): [number, number, number, number] {
     const allowedCharsArray = allowedChars.split('')
     for (let i = 0; i < allowedCharsArray.length; i++) {
         for (let j = 0; j < allowedCharsArray.length; j++) {
