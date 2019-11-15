@@ -1,0 +1,14 @@
+{
+  "name": "and-sub-encoder",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "author": "phra",
+  "license": "MIT",
+  "devDependencies": {
+    "ts-node": "^8.5.0",
+    "typescript": "^3.7.2"
+  },
+  "dependencies": {
+    "@types/node": "^12.12.7"
+  }
+}
