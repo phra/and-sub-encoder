@@ -1,5 +1,3 @@
-import { executionAsyncId } from "async_hooks"
-
 // 0x20 - 0x7f
 const FULL_ALPHA_CHARS = "\x20\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2a\x2b\x2c\x2d\x2e\x2f\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3a\x3b\x3c\x3d\x3e\x3f\x40\x41\x42\x43\x44\x45\x46\x47\x48\x49\x4a\x4b\x4c\x4d\x4e\x4f\x50\x51\x52\x53\x54\x55\x56\x57\x58\x59\x5a\x5b\x5c\x5d\x5e\x5f\x60\x61\x62\x63\x64\x65\x66\x67\x68\x69\x6a\x6b\x6c\x6d\x6e\x6f\x70\x71\x72\x73\x74\x75\x76\x77\x78\x79\x7a\x7b\x7c\x7d\x7e"
 
@@ -25,6 +23,16 @@ function add(a: number, b: number) {
 
 function sub(a: number, b: number) {
     return Uint32Array.from([a - b])[0]
+}
+
+function parseShellcode(shellcode: string): string {
+    let output = ''
+    output += shellcode
+        .split('\\x')
+        .filter(a => a)
+        .map(c => String.fromCharCode(parseInt(c, 16)))
+        .join('')
+    return output
 }
 
 function getSingleZeroAndEax2(allowedChars: string): [number, number] {
@@ -59,7 +67,7 @@ function getSingleSubEncode(value: number, previousRemainder: number, allowedCha
                 let a = allowedCharsArray[i].charCodeAt(0),
                     b = allowedCharsArray[j].charCodeAt(0),
                     c = allowedCharsArray[k].charCodeAt(0)
-                
+
                 let res = sub(sub(sub(0, a), b), c)
 
                 if (and(res, 0xff) === value) {
@@ -105,25 +113,36 @@ function encodeValueInEAX(value: number): string {
     return output
 }
 
+function addToEAX(value: number): string {
+    const [c, d, e] = getSubEncode(value, FILENAME_CHARS)
+    let output = ''
+    output += `sub eax, ${hex(c)}\n`
+    output += `sub eax, ${hex(d)}\n`
+    output += `sub eax, ${hex(e)} ; eax += ${hex(sub(sub(sub(0, c), d), e))}\n`
+    return output
+}
+
 function encodeShellcode(shellcode: string) {
     const paddedShellcode = shellcode.padEnd(shellcode.length + (4 - (shellcode.length % 4)), '\x42')
+    const reversedShellcode = paddedShellcode.split('').reverse().join('')
     let output = ''
     let stubLength = 0
     // metasm >
     output += `push eax\n` // \x50
     stubLength += 1
-    output += `pop ecx\n` // \x59
+    output += `pop ebx\n` // \x59
     stubLength += 1
-    output += `DEC_PLACEHOLDER`
-    output += "push ecx\n" // \x51
+    output += `ADD_EAX_PLACEHOLDER`
+    stubLength += 15
+    output += "push eax\n" // \x51
     stubLength += 1
     output += "pop esp\n" // \x5c
     stubLength += 1
 
-    for (let i = paddedShellcode.length - 4; i >= 0; i -= 4) {
+    for (let i = 0; i < reversedShellcode.length; i += 4) {
         let value = 0
         for (let j = 0; j < 4; j++) {
-            value = (value << 8) | paddedShellcode.substr(i + j, 1).charCodeAt(0)
+            value = (value << 8) | reversedShellcode.substr(i + j, 1).charCodeAt(0)
         }
 
         output += encodeValueInEAX(value)
@@ -131,15 +150,20 @@ function encodeShellcode(shellcode: string) {
         stubLength += 26
     }
 
-    output = output.replace('DEC_PLACEHOLDER', `dec ecx\n`.repeat(stubLength)) // \x49 * length of total generated shellcode
-    output += 'dec ecx\n'.repeat(paddedShellcode.length) // \x49 NOPs to be filled with decoded shellcode
+    output = output.replace('ADD_EAX_PLACEHOLDER', addToEAX(stubLength + reversedShellcode.length))
+    output += 'dec ecx\n'.repeat(reversedShellcode.length) // \x49 NOPs to be filled with decoded shellcode
+    console.log(`payload length: ${stubLength * 2 + reversedShellcode.length}`)
     return output
 }
 
 let shellcode = ''
-// metasm > mov eax, 0x11223344
-shellcode += '\xb8\x44\x33\x22\x11'
 // metasm > jmp eax
-shellcode += '\xff\xe0'
+//shellcode += '\xff\xe0'
 
-console.log(encodeShellcode(shellcode))
+// metasm > mov eax, 0x11223344
+//shellcode += '\xb8\x44\x33\x22\x11'
+shellcode += '\\xb8\\x44\\x33\\x22\\x11'
+
+console.log(encodeValueInEAX(0xdeadbeef))
+
+console.log(encodeShellcode(parseShellcode(shellcode)))
