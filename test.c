@@ -7,11 +7,11 @@ int generated() {
   asm volatile(
     "mov $0xffffd010, %eax\n" // start of encoder in eax
     "int $0x3\n"
-    "push %eax\n"
-    "pop %ebx\n"
+    //"push %eax\n"
+    //"pop %ebx\n"
     "subl $0x20202020, %eax\n" // +5
     "subl $0x61616120, %eax\n" // +5
-    "subl $0x7e7e7e71, %eax\n" // +5 ; eax += 0x4f
+    "subl $0x7e7e7e73, %eax\n" // +5 ; eax += 0x4d
     "push %eax\n"
     "pop %esp\n"
     "andl $0x20202020, %eax\n" // +5

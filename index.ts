@@ -127,11 +127,7 @@ function encodeShellcode(shellcode: string) {
     const reversedShellcode = paddedShellcode.split('').reverse().join('')
     let output = ''
     let stubLength = 0
-    // metasm >
-    output += `push eax\n` // \x50
-    stubLength += 1
-    output += `pop ebx\n` // \x59
-    stubLength += 1
+
     output += `ADD_EAX_PLACEHOLDER`
     stubLength += 15
     output += "push eax\n" // \x51
@@ -152,7 +148,6 @@ function encodeShellcode(shellcode: string) {
 
     output = output.replace('ADD_EAX_PLACEHOLDER', addToEAX(stubLength + reversedShellcode.length))
     output += 'dec ecx\n'.repeat(reversedShellcode.length) // \x49 NOPs to be filled with decoded shellcode
-    console.log(`payload length: ${stubLength * 2 + reversedShellcode.length}`)
     return output
 }
 
